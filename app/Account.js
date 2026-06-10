@@ -8,10 +8,17 @@ const typeIcon = require("../assets/Type.png");
 const clockIcon = require("../assets/Clock.png");
 const thumbsUpIcon = require("../assets/ThumbsUp.png");
 const thumbsUpDarkIcon = require("../assets/ThumbUp-on.png");
-
+const GUIDES = [
+  require("../assets/guide1.png"),
+  require("../assets/guide2.png"),
+  require("../assets/guide3.png"),
+  require("../assets/guide4.png"),
+  require("../assets/guide5.png"),
+  require("../assets/guide6.png"),
+];
 import { useTheme } from "./ThemeContext"; // 🎯 1. 引入全域主題鉤子
 
-import { useCallback, useEffect, useRef, useState } from "react"; // 1. 確保有引入 useEffect 和 useState
+import { useCallback, useEffect, useRef, useState } from "react"; 
 import {
   Animated,
   StatusBar,
@@ -25,7 +32,11 @@ import {
   Alert,
   Image,
   PanResponder,
+  Modal,       
+  ScrollView,
+  Dimensions
 } from "react-native";
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 import { useRouter } from "expo-router";
 import { onAuthStateChanged, signOut, deleteUser } from "firebase/auth";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -145,22 +156,29 @@ function SwipeToDelete({ children, onDelete, surfaceColor, actionLabel = "刪除
 }
 
 export default function AccountPage() {
-  // 🎯 修改：加入 currentAvatarSource（圖片資產）與 changeAvatar（變換函式）
   const { themeMode, colors, toggleTheme, currentAvatarSource, changeAvatar, currentAvatarId,allAvatars } = useTheme();
   const [currentView, setCurrentView] = useState("profile"); // "profile" 或 "settings"
   const [showAvatarPicker, setShowAvatarPicker] = useState(false); // 控制頭像選單
+  const [showGuide, setShowGuide] = useState(false); 
   const [isDarkMode, setIsDarkMode] = useState(false);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [authChecked, setAuthChecked] = useState(false);
   const [currentUser, setCurrentUser] = useState(auth.currentUser);
   
+  
   // 🎯 建立儲存 Firebase 資料的 State（取代原本的模擬資料）
   const [historyData, setHistoryData] = useState([]);
   const [userStats, setUserStats] = useState({ reports: 0, likes: 0 });
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshCount, setRefreshCount] = useState(0);
-
+const [guideIndex, setGuideIndex] = useState(0);
+  const onViewableItemsChanged = useRef(({ viewableItems }) => {
+    if (viewableItems && viewableItems.length > 0) {
+      setGuideIndex(viewableItems[0].index || 0);
+    }
+  }).current;
+  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 }).current;
   
 
   // 檢查登入狀態
@@ -571,15 +589,65 @@ export default function AccountPage() {
               />
             </View>
           </View>
-          <View style={[styles.row, { borderBottomWidth: 0 }]}>
+<Pressable 
+            style={[styles.row, { borderBottomWidth: 0 }]} 
+            onPress={() => {
+              setGuideIndex(0); // 每次打開重置回第一頁
+              setShowGuide(true);
+            }}
+          >
             <View style={styles.rowLeft}>
               <Image source={compassIcon} style={[styles.rowItemIcon, { tintColor: colors.special }]} />
               <Text style={[styles.rowLabel, { color: colors.text }]}>App導覽</Text>
             </View>
             <Text style={[styles.arrow, { color: themeMode === "dark" ? "#666666" : "#CCCCCC" }]}>❯</Text>
-          </View>
+          </Pressable>
         </View>
+            {/* 🎯 額外加入：導覽圖片輪播與小圓點 */}
+        <Modal
+          visible={showGuide}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowGuide(false)}
+        >
+          <View style={styles.guideModalContainer}>
+            {/* 右上角關閉 */}
+            <Pressable style={styles.guideCloseButton} onPress={() => setShowGuide(false)}>
+              <Text style={styles.guideCloseText}>✕</Text>
+            </Pressable>
 
+            {/* 6張圖左右滑動 */}
+            <FlatList
+              data={GUIDES}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onViewableItemsChanged={onViewableItemsChanged}
+              viewabilityConfig={viewabilityConfig}
+              keyExtractor={(_, index) => index.toString()}
+              renderItem={({ item }) => (
+                <View style={styles.guidePage}>
+                  <View style={styles.guideImageWrapper}>
+                    <Image source={item} style={styles.guideImage} />
+                  </View>
+                </View>
+              )}
+            />
+
+            {/* 下方小圓點指標 */}
+            <View style={styles.indicatorContainer}>
+              {GUIDES.map((_, index) => (
+                <View
+                  key={index}
+                  style={[
+                    styles.dot,
+                    guideIndex === index ? styles.activeDot : styles.inactiveDot,
+                  ]}
+                />
+              ))}
+            </View>
+          </View>
+        </Modal>
         <View style={styles.buttonGroup}>
           <Pressable 
             style={[styles.logoutButton, { backgroundColor: themeMode === "dark" ? "#1E1E1E" : "#FFFFFF", borderColor: themeMode === "dark" ? "#2C2C2C" : "#E0E0E0" }]}
@@ -1045,5 +1113,70 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
     resizeMode: "contain",
+  },
+  // 🎯 導覽功能專屬樣式支援
+  guideModalContainer: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.9)", 
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  guideCloseButton: {
+    position: "absolute",
+    top: 50,
+    right: 24,
+    zIndex: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.3)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  guideCloseText: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "bold",
+  },
+  guidePage: {
+    width: SCREEN_WIDTH, // 🎯 這裡換成動態寬度，做到一頁一張圖
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+guideImageWrapper: {
+    width: "80%",           // 🎯 關鍵：把寬度縮小（原本是 100%），讓它左右變窄
+    height: "75%",          // 🎯 高度保持不變，這樣整體比例就會變得「又窄又長」
+    borderRadius: 10,       // 🎯 圓角重新加回容器上
+    overflow: "hidden",     // 🎯 完美切除超出圓角的圖片邊緣
+    backgroundColor: "#1A1A1A", // 給容器一個深色底，如果圖片有細微不合也能完美融合
+    alignSelf: "center",    // 確保變窄後的容器依然在螢幕正中間
+  },
+  guideImage: {
+    width: "100%",
+    height: "100%",
+resizeMode: "cover",
+borderRadius:20,
+  },
+  indicatorContainer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    position: "absolute",
+    bottom: 60,
+  },
+  dot: {
+    height: 8,
+    borderRadius: 4,
+    marginHorizontal: 5,
+  },
+  activeDot: {
+    width: 22, // 🎯 當前頁面小圓點拉長
+    backgroundColor: "#A3B7AC", // 配合你的莫蘭迪綠
+  },
+  inactiveDot: {
+    width: 8,
+    backgroundColor: "rgba(255, 255, 255, 0.4)",
   },
 });

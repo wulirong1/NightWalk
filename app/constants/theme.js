@@ -47,3 +47,4 @@ export const themeColors = {
   light: colors,
   dark: darkColors,
 };
+export default function DummyThemeRoute() { return null; }
