@@ -147,10 +147,17 @@ function CommentCard({
 
   const panResponder = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gestureState) =>
-        isOwnComment &&
-        gestureState.dx < -12 &&
-        Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        const isHorizontalSwipe =
+          Math.abs(gestureState.dx) > 12 &&
+          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5;
+
+        return (
+          isOwnComment &&
+          isHorizontalSwipe &&
+          (gestureState.dx < 0 || isDeleteActionOpenRef.current)
+        );
+      },
       onPanResponderGrant: () => {
         dragStartXRef.current = isDeleteActionOpenRef.current ? -commentDeleteActionWidth : 0;
       },

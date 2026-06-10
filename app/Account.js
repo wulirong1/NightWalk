@@ -8,6 +8,7 @@ const typeIcon = require("../assets/Type.png");
 const clockIcon = require("../assets/Clock.png");
 const thumbsUpIcon = require("../assets/ThumbsUp.png");
 const thumbsUpDarkIcon = require("../assets/ThumbUp-on.png");
+const pencilIcon = require("../assets/pencil.png");
 
 import { useTheme } from "./ThemeContext"; // 🎯 1. 引入全域主題鉤子
 
@@ -24,14 +25,16 @@ import {
   Switch,
   Alert,
   Image,
+  Keyboard,
   PanResponder,
+  TextInput,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { onAuthStateChanged, signOut, deleteUser } from "firebase/auth";
+import { onAuthStateChanged, signOut, deleteUser, updateProfile } from "firebase/auth";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // 2. 引入 Firestore 相關語法
-import { collection, query, where, orderBy, onSnapshot, collectionGroup, deleteDoc, doc, getDoc } from "firebase/firestore";
+import { collection, query, where, orderBy, onSnapshot, collectionGroup, deleteDoc, doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 
 import { auth, db } from "../firebase"; // 3. 確保引入了 db (Firestore 實例)
 import { voteOnReport } from "../services/reportVoting";
@@ -154,6 +157,10 @@ export default function AccountPage() {
   const insets = useSafeAreaInsets();
   const [authChecked, setAuthChecked] = useState(false);
   const [currentUser, setCurrentUser] = useState(auth.currentUser);
+  const [displayName, setDisplayName] = useState(auth.currentUser?.displayName || "");
+  const [nameDraft, setNameDraft] = useState(auth.currentUser?.displayName || "");
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [isSavingName, setIsSavingName] = useState(false);
   
   // 🎯 建立儲存 Firebase 資料的 State（取代原本的模擬資料）
   const [historyData, setHistoryData] = useState([]);
@@ -167,6 +174,8 @@ export default function AccountPage() {
   useEffect(() => {
     return onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
+      setDisplayName(user?.displayName || "");
+      setNameDraft(user?.displayName || "");
       setAuthChecked(true);
 
       if (!user) {
@@ -329,6 +338,47 @@ export default function AccountPage() {
     }
   }
 
+  async function handleSaveDisplayName() {
+    const nextDisplayName = nameDraft.trim();
+    if (!nextDisplayName || isSavingName || !currentUser) {
+      if (!nextDisplayName) {
+        Alert.alert("名稱不能為空白", "請輸入使用者名稱。");
+      }
+      return;
+    }
+
+    if (nextDisplayName === displayName) {
+      setIsEditingName(false);
+      return;
+    }
+
+    setIsSavingName(true);
+    try {
+      await updateProfile(currentUser, { displayName: nextDisplayName });
+      setDisplayName(nextDisplayName);
+      setNameDraft(nextDisplayName);
+      setIsEditingName(false);
+
+      try {
+        await setDoc(
+          doc(db, "users", currentUser.uid),
+          {
+            nickname: nextDisplayName,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      } catch (profileError) {
+        console.warn("同步 Firestore 使用者名稱失敗:", profileError);
+      }
+    } catch (error) {
+      console.error("更新使用者名稱失敗:", error);
+      Alert.alert("更新失敗", "目前無法修改使用者名稱，請稍後再試。");
+    } finally {
+      setIsSavingName(false);
+    }
+  }
+
   function handleDeleteHistoryItem(item) {
     const isReport = item.listType === "report";
     const isLiked = item.listType === "liked";
@@ -470,7 +520,11 @@ export default function AccountPage() {
 
  if (currentView === "settings") {
     return (
-      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background }]}>                 
+      <Pressable
+        accessible={false}
+        onPress={Keyboard.dismiss}
+        style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background }]}
+      >
         <StatusBar barStyle={themeMode === "dark" ? "light-content" : "dark-content"} backgroundColor={colors.background} />
 
         {/* 頂部導航 */}
@@ -531,10 +585,53 @@ export default function AccountPage() {
               {/* 🎯 修正：欄位名稱標籤文字改為 dynamic colors.text */}
               <Text style={[styles.rowLabel, { color: colors.text }]}>使用者名稱</Text>
             </View>
-            {/* 🎯 修正：欄位真實數值在夜間改為淡灰色，白天為深灰，對齊截圖質感 */}
-            <Text style={[styles.rowValue, { color: themeMode === "dark" ? "#AAAAAA" : "#777777" }]}>
-              {currentUser.displayName || currentUser.email?.split('@')[0] || "夜行者__22"}
-            </Text>
+            {isEditingName ? (
+              <View style={styles.nameEditContainer}>
+                <TextInput
+                  autoFocus
+                  editable={!isSavingName}
+                  maxLength={30}
+                  onChangeText={setNameDraft}
+                  onSubmitEditing={handleSaveDisplayName}
+                  returnKeyType="done"
+                  selectTextOnFocus
+                  style={[
+                    styles.nameInput,
+                    {
+                      color: colors.text,
+                      borderColor: themeMode === "dark" ? "#444444" : "#DDDDDD",
+                    },
+                  ]}
+                  value={nameDraft}
+                />
+                <Pressable
+                  disabled={isSavingName}
+                  hitSlop={8}
+                  onPress={handleSaveDisplayName}
+                >
+                  <Text style={[styles.nameSaveText, { color: colors.special }]}>
+                    {isSavingName ? "儲存中" : "儲存"}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable
+                hitSlop={8}
+                onPress={() => {
+                  setNameDraft(displayName || currentUser.email?.split("@")[0] || "");
+                  setIsEditingName(true);
+                }}
+                style={styles.nameDisplayButton}
+              >
+                <Text
+                  numberOfLines={1}
+                  style={[styles.rowValue, { color: themeMode === "dark" ? "#AAAAAA" : "#777777" }]}
+                >
+                  {displayName || currentUser.email?.split("@")[0] || "夜行者__22"}
+                </Text>
+                <Image source={pencilIcon} style={styles.nameEditIcon} />
+              </Pressable>
+            )}
           </View>
           <View style={[styles.row, { borderBottomWidth: 0 }]}>
             <View style={styles.rowLeft}>
@@ -605,7 +702,7 @@ export default function AccountPage() {
             <Text style={styles.deleteText}>刪除帳號</Text>
           </Pressable>
         </View>
-      </View>
+      </Pressable>
     );
   }
 
@@ -628,7 +725,7 @@ export default function AccountPage() {
           </View>
           </Pressable>
             <Text style={[styles.userName, { color: colors.text }]}>
-            {currentUser.displayName || currentUser.email?.split('@')[0] || "使用者名稱"}
+            {displayName || currentUser.email?.split('@')[0] || "使用者名稱"}
           </Text>
         </View>
           <Pressable
@@ -931,6 +1028,41 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#777777",
     maxWidth: 180,
+  },
+  nameEditContainer: {
+    flex: 1,
+    marginLeft: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+  },
+  nameDisplayButton: {
+    maxWidth: 190,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  nameEditIcon: {
+    width: 18,
+    height: 18,
+    marginLeft: 7,
+    resizeMode: "contain",
+  },
+  nameInput: {
+    flex: 1,
+    minWidth: 90,
+    maxWidth: 150,
+    height: 36,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderRadius: 8,
+    fontSize: fontSizes.body,
+    fontWeight: "600",
+    textAlign: "right",
+  },
+  nameSaveText: {
+    marginLeft: 10,
+    fontSize: fontSizes.bodySmall,
+    fontWeight: "900",
   },
   buttonGroup: {
     marginTop: 24,

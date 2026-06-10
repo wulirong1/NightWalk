@@ -1,0 +1,16 @@
+[debug] [2026-06-10T11:13:28.366Z] ----------------------------------------------------------------------
+[debug] [2026-06-10T11:13:28.368Z] Command:       /usr/local/bin/node /Users/wulirong/.npm/_npx/7750544ccf494d8b/node_modules/.bin/firebase deploy --only firestore:indexes --project nightwalk-6fad3
+[debug] [2026-06-10T11:13:28.368Z] CLI Version:   15.19.1
+[debug] [2026-06-10T11:13:28.368Z] Platform:      darwin
+[debug] [2026-06-10T11:13:28.368Z] Node Version:  v24.15.0
+[debug] [2026-06-10T11:13:28.368Z] Time:          Wed Jun 10 2026 19:13:28 GMT+0800 (Taiwan Standard Time)
+[debug] [2026-06-10T11:13:28.368Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-06-10T11:13:28.843Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-06-10T11:13:28.843Z] > authorizing via signed-in user (rowanwu0615@gmail.com)
+[debug] [2026-06-10T11:13:28.843Z] [iam] checking project nightwalk-6fad3 for permissions ["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]
+[debug] [2026-06-10T11:13:28.843Z] Checked if tokens are valid: true, expires at: 1781093592326
+[debug] [2026-06-10T11:13:28.843Z] Checked if tokens are valid: true, expires at: 1781093592326
+[debug] [2026-06-10T11:13:28.844Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/nightwalk-6fad3:testIamPermissions [none]
+[debug] [2026-06-10T11:13:28.844Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/nightwalk-6fad3:testIamPermissions  x-goog-user-project=nightwalk-6fad3
+[debug] [2026-06-10T11:13:28.844Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/nightwalk-6fad3:testIamPermissions {"permissions":["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]}
