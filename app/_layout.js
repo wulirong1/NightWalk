@@ -76,6 +76,7 @@ function AppFrame() {
             headerShown: false,
             animation: "none",
             contentStyle: { backgroundColor: colors.background },
+            gestureEnabled: false,
           }}
         />
       </View>
