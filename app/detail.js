@@ -4,6 +4,7 @@ import {
   Animated,
   Image,
   Keyboard,
+  Modal,
   PanResponder,
   Pressable,
   RefreshControl,
@@ -254,6 +255,7 @@ export default function DetailPage() {
   const [voteSuccessAnimationKey, setVoteSuccessAnimationKey] = useState(0);
   const [commentSuccessAnimationKey, setCommentSuccessAnimationKey] = useState(0);
   const [currentUser, setCurrentUser] = useState(auth.currentUser);
+  const [previewImageUrl, setPreviewImageUrl] = useState(null);
   const currentReportId = Array.isArray(reportId) ? reportId[0] : reportId;
   const inputBottomPadding = Math.max(insets.bottom, 26);
 
@@ -575,8 +577,9 @@ export default function DetailPage() {
                     showsHorizontalScrollIndicator={false}
                   >
                     {imageUrls.map((imageUrl, index) => (
-                      <View
+                      <Pressable
                         key={`${imageUrl}-${index}`}
+                        onPress={() => setPreviewImageUrl(imageUrl)}
                         style={[styles.reportImageCard, { backgroundColor: themeMode === "dark" ? "#1E1E1E" : "#FFFFFF" }]}
                       >
                         <Image
@@ -585,7 +588,7 @@ export default function DetailPage() {
                           source={{ uri: imageUrl }}
                           style={styles.reportImage}
                         />
-                      </View>
+                      </Pressable>
                     ))}
                   </ScrollView>
                 ) : null}
@@ -740,6 +743,26 @@ export default function DetailPage() {
               />
             </>
           ) : null}
+
+          <Modal
+            animationType="fade"
+            onRequestClose={() => setPreviewImageUrl(null)}
+            statusBarTranslucent
+            transparent
+            visible={!!previewImageUrl}
+          >
+            <Pressable
+              onPress={() => setPreviewImageUrl(null)}
+              style={styles.imagePreviewOverlay}
+            >
+              <Image
+                accessibilityLabel="Preview image"
+                resizeMode="contain"
+                source={{ uri: previewImageUrl || "" }}
+                style={styles.imagePreviewContent}
+              />
+            </Pressable>
+          </Modal>
       </View>
     </View>
   );
@@ -1109,5 +1132,16 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     fontSize: fontSizes.bodySmall,
     fontWeight: "900",
+  },
+  imagePreviewOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.9)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 20,
+  },
+  imagePreviewContent: {
+    width: "100%",
+    height: "100%",
   },
 });

@@ -83,7 +83,7 @@ function createCustomTypeDocId(typeLabel) { return `custom-${encodeURIComponent(
 function normalizeCustomTypeText(typeText) { return typeText.trim().replace(/^(?:#|＃)+/, "").trim(); }
 function formatCustomTypeText(typeLabel) { return `#${typeLabel}`; }
 
-async function uploadImageAsync(imageUri) {
+async function uploadImageAsync(imageUri, signal) {
   const user = auth.currentUser;
   const userId = user?.uid || "anonymous";
   const imagePath = `reports/${userId}/${Date.now()}.jpg`;
@@ -94,22 +94,44 @@ async function uploadImageAsync(imageUri) {
     const bucket = storage.app.options.storageBucket;
     const fileInfo = await FileSystem.getInfoAsync(imageUri);
     if (!fileInfo.exists || typeof fileInfo.size !== "number") throw new Error("image-file-unavailable");
+    const fileResponse = await fetch(imageUri, { signal });
+    if (!fileResponse.ok) throw new Error("failed-to-read-image");
+    const fileBlob = await fileResponse.blob();
     const createUploadUrl = `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucket)}/o` + `?name=${encodeURIComponent(imagePath)}`;
     const createUploadResult = await fetch(createUploadUrl, {
       method: "POST",
-      headers: { Authorization: `Firebase ${idToken}`, "Content-Type": "application/json; charset=utf-8", "X-Goog-Upload-Command": "start", "X-Goog-Upload-Header-Content-Length": `${fileInfo.size}`, "X-Goog-Upload-Header-Content-Type": "image/jpeg", "X-Goog-Upload-Protocol": "resumable" },
+      headers: {
+        Authorization: `Firebase ${idToken}`,
+        "Content-Type": "application/json; charset=utf-8",
+        "X-Goog-Upload-Command": "start",
+        "X-Goog-Upload-Header-Content-Length": `${fileInfo.size}`,
+        "X-Goog-Upload-Header-Content-Type": "image/jpeg",
+        "X-Goog-Upload-Protocol": "resumable",
+      },
       body: JSON.stringify({ name: imagePath, bucket, contentType: "image/jpeg" }),
+      signal,
     });
     const resumableUploadUrl = createUploadResult.headers.get("X-Goog-Upload-URL");
     if (!createUploadResult.ok || !resumableUploadUrl) throw new Error("Firebase Storage start failed.");
-    const uploadResult = await FileSystem.uploadAsync(resumableUploadUrl, imageUri, {
-      httpMethod: "POST",
-      uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
-      headers: { Authorization: `Firebase ${idToken}`, "Content-Type": "image/jpeg", "X-Goog-Upload-Command": "upload, finalize", "X-Goog-Upload-Offset": "0" },
+    const uploadResult = await fetch(resumableUploadUrl, {
+      method: "POST",
+      body: fileBlob,
+      headers: {
+        Authorization: `Firebase ${idToken}`,
+        "Content-Type": "image/jpeg",
+        "X-Goog-Upload-Command": "upload, finalize",
+        "X-Goog-Upload-Offset": "0",
+      },
+      signal,
     });
-    if (uploadResult.status < 200 || uploadResult.status >= 300) throw new Error("Firebase Storage upload failed.");
+    if (!uploadResult.ok) throw new Error("Firebase Storage upload failed.");
     return getDownloadURL(imageRef);
-  } catch (error) { throw error; }
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error("upload-aborted");
+    }
+    throw error;
+  }
 }
 
 function getUploadErrorMessage(error) {
@@ -132,6 +154,7 @@ export default function AddPage() {
   const successScale = useRef(new Animated.Value(0.65)).current;
   const successOpacity = useRef(new Animated.Value(0)).current;
   const submissionCanceledRef = useRef(false);
+  const uploadAbortControllerRef = useRef(null);
   const [selectedLocation, setSelectedLocation] = useState(reportLocation);
   const [mapRegion, setMapRegion] = useState(reportRegion);
   const [selectedAddress, setSelectedAddress] = useState("");
@@ -315,12 +338,13 @@ export default function AddPage() {
     const user = auth.currentUser;
     if (!user) { showLoginRequiredAlert("登入後才能新增回報。"); return; }
     if (!locationText.trim() || !description.trim() || selectedTypes.length === 0) { Alert.alert("資料未完成", "請完整填寫位置、危險類型與說明。"); return; }
+    uploadAbortControllerRef.current = new AbortController();
     setIsSubmitting(true); setSubmissionStage("submitting"); submissionCanceledRef.current = false;
     let reportSubmitted = false;
     try {
       const imageUrls = [];
       for (const image of selectedImages) {
-        imageUrls.push(await uploadImageAsync(image.uri));
+        imageUrls.push(await uploadImageAsync(image.uri, uploadAbortControllerRef.current.signal));
         if (submissionCanceledRef.current) return;
       }
       await addDoc(collection(db, "reports"), { locationText: locationText.trim(), selectedAddress, description: description.trim(), types: selectedTypes, markerType: selectedTypes[0], latitude: selectedLocation.latitude, longitude: selectedLocation.longitude, imageUrl: imageUrls[0] || "", imageUrls, credibleCount: 0, notCredibleCount: 0, userId: user.uid, createdAt: serverTimestamp() });
@@ -328,16 +352,31 @@ export default function AddPage() {
       setLocationText(""); setSelectedAddress(""); setDescription(""); setSelectedTypes([]); setCustomTypeText(""); setSelectedImages([]);
       reportSubmitted = true; setSubmissionStage("success");
       setTimeout(() => { setSubmissionStage("idle"); setIsSubmitting(false); router.replace("/"); }, 1400);
-    } catch (error) { setSubmissionStage("idle"); if (!submissionCanceledRef.current) Alert.alert("送出失敗", getUploadErrorMessage(error)); } finally { if (!reportSubmitted) setIsSubmitting(false); }
+    } catch (error) {
+      setSubmissionStage("idle");
+      if (!submissionCanceledRef.current && error.message !== "upload-aborted") {
+        Alert.alert("送出失敗", getUploadErrorMessage(error));
+      }
+    } finally {
+      uploadAbortControllerRef.current = null;
+      if (!reportSubmitted) setIsSubmitting(false);
+    }
   }
 
-  function handleCancelSubmit() { submissionCanceledRef.current = true; setSubmissionStage("idle"); setIsSubmitting(false); }
+  function handleCancelSubmit() {
+    submissionCanceledRef.current = true;
+    uploadAbortControllerRef.current?.abort();
+    uploadAbortControllerRef.current = null;
+    setSubmissionStage("idle");
+    setIsSubmitting(false);
+  }
 
   const customTypeQuery = normalizeCustomTypeText(customTypeText);
   const debouncedCustomTypeQuery = normalizeCustomTypeText(debouncedCustomTypeText);
   const availableDangerTypeSuggestions = dangerTypeSuggestions.filter((customType) => !selectedTypes.includes(customType.id));
   const matchingCustomTypeSuggestions = debouncedCustomTypeQuery ? availableDangerTypeSuggestions.filter((customType) => customType.label.toLocaleLowerCase().includes(debouncedCustomTypeQuery.toLocaleLowerCase())).slice(0, maxDangerTypeSuggestionCount) : availableDangerTypeSuggestions.slice(0, maxDangerTypeSuggestionCount);
   const shouldShowCustomTypeSuggestions = customTypeQuery === debouncedCustomTypeQuery;
+  const isNewCustomType = customTypeQuery && !dangerTypeSuggestions.some((type) => type.label.toLocaleLowerCase() === customTypeQuery.toLocaleLowerCase());
   const selectedDangerTypeOptions = selectedTypes.map((typeId) => ({ id: typeId, label: getDangerTypeLabel(typeId, dangerTypeSuggestions) }));
 
   return (
@@ -454,6 +493,24 @@ export default function AddPage() {
                 </Text>
               </Pressable>
             ))}
+            {isNewCustomType ? (
+              <Pressable
+                accessibilityLabel={`新增 ${formatCustomTypeText(customTypeText)}`}
+                accessibilityRole="button"
+                onPress={() => handleCreateCustomType(customTypeText)}
+                style={[
+                  styles.customTypeSuggestion,
+                  styles.customTypeCreateSuggestion,
+                  {
+                    backgroundColor: themeMode === "dark" ? "#1E1E1E" : colors.white,
+                    borderColor: colors.divider,
+                  },
+                ]}
+              >
+                <Text style={[styles.customTypeSuggestionHash, { color: colors.text }]}>+</Text>
+                <Text style={[styles.customTypeSuggestionText, { color: colors.text }]}>新增 {formatCustomTypeText(customTypeText)}</Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
 
@@ -479,7 +536,7 @@ export default function AddPage() {
           ]}
         >
           <Image source={imageIcon} style={[styles.photoIcon, { tintColor: colors.text }]} />
-          <Text style={[styles.photoButtonText, { color: colors.text }]}>
+          <Text style={[styles.photoButtonText, { color: colors.text }]}> 
             {isPickingImage ? "讀取中..." : "新增圖片"}
           </Text>
         </Pressable>
@@ -504,13 +561,11 @@ export default function AddPage() {
                 </View>
               ))}
             </ScrollView>
-            <Text style={[styles.photoCount, { color: colors.special }]}>
+            <Text style={[styles.photoCount, { color: colors.special }]}> 
               已選擇 {selectedImages.length}/{maxPhotoCount} 張照片
             </Text>
           </>
         ) : null}
-        
-        {/* 送出按鈕 */}
         <Pressable onPress={handleSubmitReport} style={styles.submitButton}>
           <Text style={styles.submitButtonText}>送出回報</Text>
         </Pressable>
@@ -613,6 +668,7 @@ const styles = StyleSheet.create({
   customTypeInput: { flex: 1, height: "100%", paddingHorizontal: 13, fontSize: fontSizes.bodySmall, fontWeight: "800" },
   customTypeSuggestions: { marginTop: 8, flexDirection: "row", flexWrap: "wrap" },
   customTypeSuggestion: { minHeight: 34, marginRight: 8, marginBottom: 8, paddingHorizontal: 11, borderRadius: 8, borderWidth: 1, flexDirection: "row", alignItems: "center" },
+  customTypeCreateSuggestion: { borderStyle: "dashed" },
   customTypeSuggestionHash: { fontSize: fontSizes.bodySmall, fontWeight: "900", lineHeight: 20 },
   customTypeSuggestionText: { marginLeft: 5, fontSize: fontSizes.bodySmall, fontWeight: "800", lineHeight: 20 },
   photoButton: { width: 110, height: 80, marginTop: 11, borderRadius: 8, alignItems: "center", justifyContent: "center" },
