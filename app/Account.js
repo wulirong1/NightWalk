@@ -149,7 +149,7 @@ function SwipeToDelete({ children, onDelete, surfaceColor, actionLabel = "刪除
 
 export default function AccountPage() {
   // 🎯 修改：加入 currentAvatarSource（圖片資產）與 changeAvatar（變換函式）
-  const { themeMode, colors, toggleTheme, currentAvatarSource, changeAvatar, currentAvatarId,allAvatars } = useTheme();
+  const { themeMode, colors, toggleTheme, currentAvatarSource, changeAvatar, currentAvatarId,allAvatars, resetThemeToLight } = useTheme();
   const [currentView, setCurrentView] = useState("profile"); // "profile" 或 "settings"
   const [showAvatarPicker, setShowAvatarPicker] = useState(false); // 控制頭像選單
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -331,6 +331,8 @@ export default function AccountPage() {
 
   async function handleSignOut() {
     try {
+      // 🎯 登出時強制重置為淺色模式
+      await resetThemeToLight();
       await signOut(auth);
     } catch (error) {
       console.error("登出失敗:", error);
