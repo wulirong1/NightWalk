@@ -668,13 +668,16 @@ export default function AccountPage() {
               />
             </View>
           </View>
-          <View style={[styles.row, { borderBottomWidth: 0 }]}>
+          <Pressable 
+            onPress={() => router.push("/gallery")}
+            style={[styles.row, { borderBottomWidth: 0 }]}
+          >
             <View style={styles.rowLeft}>
               <Image source={compassIcon} style={[styles.rowItemIcon, { tintColor: colors.special }]} />
               <Text style={[styles.rowLabel, { color: colors.text }]}>App導覽</Text>
             </View>
             <Text style={[styles.arrow, { color: themeMode === "dark" ? "#666666" : "#CCCCCC" }]}>❯</Text>
-          </View>
+          </Pressable>
         </View>
 
         <View style={styles.buttonGroup}>
